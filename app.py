@@ -230,12 +230,7 @@ html, body, [class*="css"] {{
 }}
 .ticker-content {{
   display: inline-block; white-space: nowrap;
-  animation: ticker 80s linear infinite;
   font-family: DM Mono, monospace; font-size: 11px; color: {MUTED};
-}}
-@keyframes ticker {{
-  0%   {{ transform: translateX(100vw); }}
-  100% {{ transform: translateX(-100%); }}
 }}
 
 /* Timer bar */
@@ -397,6 +392,26 @@ def ticker_text(dados):
             parts.append(f"{c['emoji']} {orgao} ({c['produto'][:6]}): {c['pct']}%")
     return "  ·  ".join(parts) + "  ·  "
 
+def _ticker_html(text):
+    double = text + "   " + text
+    return (
+        f'<div style="position:fixed;bottom:0;left:0;right:0;z-index:100;'
+        f'background:rgba(10,14,26,.95);backdrop-filter:blur(8px);'
+        f'border-top:1px solid rgba(59,130,246,.2);padding:5px 0;overflow:hidden">'
+        f'<div style="display:inline-block;white-space:nowrap;'
+        f'font-family:DM Mono,monospace;font-size:11px;color:#64748b;'
+        f'animation:tickerScroll 120s linear infinite;'
+        f'will-change:transform">'
+        f'{double}'
+        f'</div></div>'
+        f'<style>'
+        f'@keyframes tickerScroll {{'
+        f'  0%   {{ transform: translateX(0); }}'
+        f'  100% {{ transform: translateX(-50%); }}'
+        f'}}'
+        f'</style>'
+    )
+
 def build_card_html(orgao, calcs, css_class="card-glass"):
     pct_max = max((c["pct"] for c in calcs), default=0)
     neon    = neon_class(pct_max)
@@ -522,14 +537,14 @@ def modo_painel():
         return
 
     orgaos = list(dados.keys())
-    def pct_medio(org):
-        calcs = resumo_orgao(dados[org])
-        return sum(c["pct"] for c in calcs) / len(calcs) if calcs else 0
-    orgaos_sorted = sorted(orgaos, key=pct_medio, reverse=True)
+
+
+
+    orgaos_sorted = orgaos
 
     st.markdown(
         f'<div style="font-family:DM Mono,monospace;font-size:11px;color:{MUTED};margin-bottom:16px">'
-        f'📋 {len(orgaos)} CONTRATOS ATIVOS · ordenados por desempenho</div>',
+        f'📋 {len(orgaos)} CONTRATOS ATIVOS</div>',
         unsafe_allow_html=True,
     )
 
@@ -546,7 +561,7 @@ def modo_painel():
                     ir_para("detalhe", orgao, "painel")
 
     st.markdown(
-        f'<div class="ticker-wrap"><div class="ticker-content">{ticker_text(dados)}</div></div>',
+        _ticker_html(ticker_text(dados)),
         unsafe_allow_html=True,
     )
 
@@ -702,7 +717,7 @@ def modo_tv():
 
     # Ticker
     st.markdown(
-        f'<div class="ticker-wrap"><div class="ticker-content">{ticker_text(dados)}</div></div>',
+        _ticker_html(ticker_text(dados)),
         unsafe_allow_html=True,
     )
 
@@ -866,7 +881,7 @@ def modo_detalhe():
 
     # Ticker
     st.markdown(
-        f'<div class="ticker-wrap"><div class="ticker-content">{ticker_text(dados)}</div></div>',
+        _ticker_html(ticker_text(dados)),
         unsafe_allow_html=True,
     )
 

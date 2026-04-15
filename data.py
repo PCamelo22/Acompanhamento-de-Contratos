@@ -1,6 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # data.py — Acompanhamento de Contratos v2.0
-# Leitura e processamento dos dados do Google Drive
 # ─────────────────────────────────────────────────────────────────────────────
 
 import io
@@ -60,11 +59,6 @@ def status_emoji(pct):
 # ── Leitura do Google Drive ───────────────────────────────────────────────────
 
 def carregar_dados():
-    """
-    Baixa a planilha do Google Drive e retorna um dicionário:
-    { nome_aba: [ { entrega, mes, produto, producao, meta }, ... ] }
-    Novos órgãos são detectados automaticamente.
-    """
     r = requests.get(SHEET_URL, timeout=30)
     r.raise_for_status()
 
@@ -77,7 +71,6 @@ def carregar_dados():
             if df.empty:
                 continue
 
-            # Encontra linha de cabeçalho
             hrow = None
             for i, row in df.iterrows():
                 vals = [str(v).strip().lower() for v in row if pd.notna(v) and str(v).strip()]
@@ -88,7 +81,6 @@ def carregar_dados():
             if hrow is None:
                 continue
 
-            # Meta contratual — linhas antes do cabeçalho
             meta_contratual = None
             for i in range(hrow):
                 row = df.iloc[i]
@@ -105,7 +97,6 @@ def carregar_dados():
                 if meta_contratual:
                     break
 
-            # Headers
             headers = [str(v).strip() if pd.notna(v) else "" for v in df.iloc[hrow]]
 
             def find_col(*keywords):
@@ -133,7 +124,6 @@ def carregar_dados():
                 if pd.isna(mes_val) and pd.isna(prod_val):
                     continue
 
-                # Parse mes
                 mes_str = None
                 if isinstance(mes_val, datetime):
                     mes_str = mes_val.strftime("%Y-%m-%d")
@@ -149,12 +139,10 @@ def carregar_dados():
                 if not mes_str:
                     continue
 
-                # Parse producao
                 producao = None
                 if isinstance(prod_val, (int, float)) and not pd.isna(prod_val):
                     producao = float(prod_val)
 
-                # Meta da linha
                 row_meta = None
                 if c_meta is not None:
                     mv = row.iloc[c_meta]
@@ -194,39 +182,90 @@ def carregar_dados():
 # ── Cálculos por produto ──────────────────────────────────────────────────────
 
 def calcular(rows, produto):
-    """Retorna métricas calculadas para um produto de um órgão."""
+    """Retorna métricas calculadas para um produto de um órgão.
+    
+    Status baseado no ÚLTIMO mês com produção vs meta mensal recalculada.
+    Meta mensal é dinâmica: saldo restante redistribuído nos meses sem produção.
+    """
     filtered = [r for r in rows if r["produto"].strip() == produto]
     if not filtered:
         return None
 
-    meta      = next((r["meta"] for r in filtered if r["meta"]), None)
-    duracao   = len(filtered)
-    meta_m    = meta / duracao if meta and duracao > 0 else None
-    total     = sum(r["producao"] or 0 for r in filtered)
-    saldo     = meta - total if meta else None
-    pct       = round((total / meta) * 100, 1) if meta else 0
+    meta    = next((r["meta"] for r in filtered if r["meta"]), None)
+    duracao = len(filtered)
+    total   = sum(r["producao"] or 0 for r in filtered)
+    saldo   = meta - total if meta else None
+    pct     = round((total / meta) * 100, 1) if meta else 0
+
+    # ── Meta mensal recalculada dinamicamente ──────────────────────────────
+    # Saldo restante redistribuído nos meses sem produção a cada mês
+    metas_mensais = []
+    saldo_acum = meta or 0
+    for i, r in enumerate(filtered):
+        meses_restantes = len(filtered) - i
+        meta_mes = saldo_acum / meses_restantes if meses_restantes > 0 else 0
+        metas_mensais.append(round(meta_mes, 2))
+        if r["producao"] is not None:
+            saldo_acum = max(0, saldo_acum - r["producao"])
+
+    # Meta mensal atual = meta do próximo mês sem produção
+    meta_m = None
+    for i, r in enumerate(filtered):
+        if r["producao"] is None:
+            meta_m = metas_mensais[i]
+            break
+    if meta_m is None:
+        meta_m = metas_mensais[-1] if metas_mensais else (meta / duracao if meta and duracao > 0 else None)
+
+    # ── Status baseado no ÚLTIMO mês com produção ──────────────────────────
+    ultimo_com_prod = None
+    for i in range(len(filtered) - 1, -1, -1):
+        if filtered[i]["producao"] is not None:
+            ultimo_com_prod = (filtered[i]["producao"], metas_mensais[i])
+            break
+
+    if ultimo_com_prod:
+        prod_ult, meta_ult = ultimo_com_prod
+        pct_mes       = (prod_ult / meta_ult * 100) if meta_ult > 0 else 0
+        cor_status    = status_cor(pct_mes)
+        label_status  = status_label(pct_mes)
+        emoji_status  = status_emoji(pct_mes)
+    else:
+        cor_status    = status_cor(0)
+        label_status  = status_label(0)
+        emoji_status  = status_emoji(0)
+
+    # Adiciona meta recalculada em cada row para o gráfico de barras
+    rows_com_meta = []
+    for i, r in enumerate(filtered):
+        row_copy = dict(r)
+        row_copy["meta_mensal_calc"] = metas_mensais[i]
+        rows_com_meta.append(row_copy)
 
     return {
-        "produto":      produto,
-        "rows":         filtered,
-        "meta":         meta,
-        "duracao":      duracao,
-        "meta_mensal":  meta_m,
-        "total":        total,
-        "saldo":        saldo,
-        "pct":          pct,
-        "cor":          status_cor(pct),
-        "status":       status_label(pct),
-        "emoji":        status_emoji(pct),
-        "fmt_total":    fmt_num(total, 2),
-        "fmt_meta":     fmt_num(meta),
-        "fmt_saldo":    fmt_num(abs(saldo) if saldo else None),
-        "fmt_meta_m":   fmt_num(meta_m, 2),
-        "fmt_mes_rows": [(fmt_mes(r["mes"]), r["producao"], r["entrega"]) for r in filtered],
+        "produto":        produto,
+        "rows":           rows_com_meta,
+        "meta":           meta,
+        "duracao":        duracao,
+        "meta_mensal":    meta_m,
+        "metas_mensais":  metas_mensais,
+        "total":          total,
+        "saldo":          saldo,
+        "pct":            pct,
+        "cor":            cor_status,
+        "status":         label_status,
+        "emoji":          emoji_status,
+        "fmt_total":      fmt_num(total, 2),
+        "fmt_meta":       fmt_num(meta),
+        "fmt_saldo":      fmt_num(abs(saldo) if saldo else None),
+        "fmt_meta_m":     fmt_num(meta_m, 2),
+        "fmt_mes_rows":   [(fmt_mes(r["mes"]), r["producao"], r["entrega"]) for r in filtered],
     }
 
 
 def resumo_orgao(rows):
-    """Retorna lista de cálculos por produto para um órgão."""
+    """Retorna lista de cálculos por produto para um órgão.
+    Mantém a ordem original da planilha.
+    """
     produtos = list(dict.fromkeys(r["produto"].strip() for r in rows))
     return [c for c in (calcular(rows, p) for p in produtos) if c]

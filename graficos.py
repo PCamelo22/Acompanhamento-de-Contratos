@@ -17,47 +17,50 @@ def grafico_barras(calc, melhor_idx=-1):
     rows   = calc["rows"]
     labels = [str(r["mes"])[:7] for r in rows]
     prod   = [r["producao"] or 0 for r in rows]
-    meta_m = calc["meta_mensal"] or 0
 
-    # Cores das barras — destaque no melhor mês
+    # Usa meta recalculada dinamicamente se disponível
+    if "meta_mensal_calc" in rows[0]:
+        metas = [r["meta_mensal_calc"] for r in rows]
+    else:
+        meta_m = calc["meta_mensal"] or 0
+        metas  = [meta_m] * len(rows)
+
+    # Cores baseadas na meta recalculada de cada mês
     cores = []
     for i, p in enumerate(prod):
         if i == melhor_idx:
-            cores.append("#f59e0b")  # dourado para melhor mês
-        elif p >= meta_m:
+            cores.append("#f59e0b")
+        elif p >= metas[i]:
             cores.append(CORES["verde"])
         else:
             cores.append(CORES["accent"])
 
-    # Bordas — destaque no melhor mês
     border_colors = ["#f59e0b" if i == melhor_idx else "rgba(0,0,0,0)" for i in range(len(prod))]
     border_widths = [3 if i == melhor_idx else 0 for i in range(len(prod))]
 
-    # Texto customizado para hover
     hover = []
     for i, (l, p) in enumerate(zip(labels, prod)):
         badge = " 🏆 Melhor mês!" if i == melhor_idx else ""
-        hover.append(f"<b>{l}</b><br>Produção: {p:,.2f}<br>Meta: {meta_m:,.2f}{badge}<extra></extra>")
+        hover.append(f"<b>{l}</b><br>Produção: {p:,.2f}<br>Meta: {metas[i]:,.2f}{badge}<extra></extra>")
 
     fig = go.Figure()
 
     fig.add_trace(go.Bar(
         x=labels, y=prod,
         name="Produção",
-        marker_color=cores,
-        marker_line_color=border_colors,
-        marker_line_width=border_widths,
-        hovertemplate=hover,
         marker=dict(
             color=cores,
             line=dict(color=border_colors, width=border_widths),
             opacity=0.9,
-        )
+        ),
+        hovertemplate=hover,
     ))
 
+    # Linha de meta dinâmica
     fig.add_trace(go.Scatter(
-        x=labels, y=[meta_m] * len(labels),
-        name="Meta Mensal", mode="lines",
+        x=labels, y=metas,
+        name="Meta Mensal",
+        mode="lines",
         line=dict(color=CORES["amarelo"], width=2, dash="dash"),
         hovertemplate="Meta Mensal: %{y:,.2f}<extra></extra>",
     ))
@@ -94,8 +97,8 @@ def grafico_barras(calc, melhor_idx=-1):
 
 
 def grafico_rosca(calc):
-    pct = calc["pct"]
-    cor = calc["cor"]
+    pct     = calc["pct"]
+    cor     = calc["cor"]
     produto = calc.get("produto", "")
 
     label_centro = "CONCLUÍDO" if "digital" in produto.lower() else "ATINGIDO"
