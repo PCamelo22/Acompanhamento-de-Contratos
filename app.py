@@ -322,9 +322,9 @@ def autenticar(senha):
 
 def ts(): return st.session_state.ultima_atualizacao or "—"
 
-def neon_class(pct):
-    if pct >= 80: return "neon-verde"
-    if pct >= 50: return "neon-amarelo"
+def neon_class(pct, acima_total=False):
+    if acima_total or pct >= 100: return "neon-verde"
+    if pct >= 40: return "neon-amarelo"
     return "neon-vermelho"
 
 def icone_produto(produto):
@@ -413,8 +413,11 @@ def _ticker_html(text):
     )
 
 def build_card_html(orgao, calcs, css_class="card-glass"):
-    pct_max = max((c["pct"] for c in calcs), default=0)
-    neon    = neon_class(pct_max)
+    pct_max     = max((c["pct"] for c in calcs), default=0)
+    acima_total = any(c.get("acima_total") for c in calcs)
+    # Neon verde se todos os produtos estão batendo a meta mensal
+    todos_verde = all(c.get("emoji") in ("✅", "⭐") for c in calcs)
+    neon        = "neon-verde" if acima_total or todos_verde else neon_class(pct_max)
     prod_html = ""
     for c in calcs:
         pct = c["pct"]; cor = c["cor"]
@@ -432,8 +435,16 @@ def build_card_html(orgao, calcs, css_class="card-glass"):
             f'<span>{c["fmt_total"]}</span><span>Meta: {c["fmt_meta"]}</span>'
             f'</div></div>'
         )
+    # Star if any product above 100% total
+    star = "⭐" if any(c.get("acima_total") for c in calcs) else ""
+    star_html = (
+        f'<div style="position:absolute;top:10px;right:12px;font-size:18px;'
+        f'filter:drop-shadow(0 0 6px #f59e0b)">{star}</div>'
+    ) if star else ""
+
     return (
-        f'<div class="{css_class} {neon}">'
+        f'<div class="{css_class} {neon}" style="position:relative">'
+        f'{star_html}'
         f'<div style="font-size:17px;font-weight:800;margin-bottom:2px">{orgao}</div>'
         f'<div style="font-family:DM Mono,monospace;font-size:10px;color:{MUTED};text-transform:uppercase">{len(calcs)} produto(s)</div>'
         f'{prod_html}</div>'
@@ -631,9 +642,11 @@ def modo_tv():
         # Menu suspenso
         sel = st.selectbox(
             "Contrato", ["— Ir para —"] + orgaos,
-            key="tv_select", label_visibility="collapsed",
+            key="tv_select",
+            label_visibility="collapsed",
+            index=0,
         )
-        if sel != "— Ir para —":
+        if sel and sel != "— Ir para —" and orgaos.index(sel) != idx_atual:
             st.session_state.tv_pagina      = orgaos.index(sel)
             st.session_state.tv_ultimo_tick = time.time()
             st.rerun()

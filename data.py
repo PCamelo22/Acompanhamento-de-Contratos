@@ -224,7 +224,14 @@ def calcular(rows, produto):
             ultimo_com_prod = (filtered[i]["producao"], metas_mensais[i])
             break
 
-    if ultimo_com_prod:
+    # Se contrato já atingiu 100% do total — sempre verde com estrela
+    acima_meta_total = (pct >= 100)
+
+    if acima_meta_total:
+        cor_status   = CORES["verde"]
+        label_status = "✅ Meta contratual atingida!"
+        emoji_status = "⭐"
+    elif ultimo_com_prod:
         prod_ult, meta_ult = ultimo_com_prod
         pct_mes       = (prod_ult / meta_ult * 100) if meta_ult > 0 else 0
         cor_status    = status_cor(pct_mes)
@@ -255,6 +262,7 @@ def calcular(rows, produto):
         "cor":            cor_status,
         "status":         label_status,
         "emoji":          emoji_status,
+        "acima_total":    acima_meta_total,
         "fmt_total":      fmt_num(total, 2),
         "fmt_meta":       fmt_num(meta),
         "fmt_saldo":      fmt_num(abs(saldo) if saldo else None),

@@ -21,8 +21,8 @@ TV_ROTACAO_SEG     = 30         # segundos entre telas
 TV_CARD_VAZIO      = "Em breve" # texto dos cards vazios na última tela
 
 # ── Thresholds de status (%) ──────────────────────────────────────────────────
-STATUS_VERDE   = 80
-STATUS_AMARELO = 50
+STATUS_VERDE   = 100  # >= 100% da meta mensal = verde
+STATUS_AMARELO = 40   # >= 40% amarelo, < 40% vermelho
 
 # ── Cores ─────────────────────────────────────────────────────────────────────
 CORES = {
